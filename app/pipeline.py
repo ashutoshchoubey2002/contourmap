@@ -50,6 +50,20 @@ def analyze(file_bytes, filename="", settings=None, include_geometry=True):
 
     # 5. catchments
     tf = d.to_lonlat()
+
+    # Rainfall is looked up once, at the best site, and used for every
+    # candidate: they sit within a few km of each other, well inside one
+    # 0.25 degree rainfall cell, and one lookup keeps a slow network from
+    # costing five timeouts.
+    if s.annual_rainfall_mm is not None:
+        rain_mm, rain_src, rain_why = float(s.annual_rainfall_mm), "request", None
+    else:
+        from . import rainfall
+        r0, c0 = sites[0]
+        lon0, lat0 = tf.transform(*d.rc_to_xy(r0, c0))
+        rain_mm, rain_src, rain_why = rainfall.annual_rainfall_mm(float(lat0), float(lon0))
+    tick("rainfall")
+
     results = []
     for i, (r, c) in enumerate(sites):
         cm = catch_mod.delineate(f.fdir, r, c)
@@ -69,7 +83,8 @@ def analyze(file_bytes, filename="", settings=None, include_geometry=True):
                 "grid_row_col": [int(r), int(c)],
             },
             "catchment": st,
-            "pond_sizing": catch_mod.pond_sizing(st["area_m2"], s),
+            "pond_sizing": catch_mod.pond_sizing(
+                st["area_m2"], s, rain_mm, st["mean_slope_pct"], rain_src, rain_why),
         }
         if include_geometry and i == 0:
             entry["catchment"]["geometry"] = catch_mod.to_geojson(cm, d)

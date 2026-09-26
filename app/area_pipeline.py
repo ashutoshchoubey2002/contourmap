@@ -121,9 +121,11 @@ def _run(ring, rainfall_mm, runoff_c) -> dict:
     lon_c, lat_c = dem.rowcol_to_lonlat(best["row"], best["col"])
     mean_slope = float(np.nanmean(slope_all[catch_mask]))
 
-    mm, rain_source = rainfall.annual_rainfall_mm(float(lat_c), float(lon_c), rainfall_mm)
+    # A figure the user typed wins outright; only look it up when absent.
     if rainfall_mm is not None:
-        mm, rain_source = float(rainfall_mm), "request"
+        mm, rain_source, rain_reason = float(rainfall_mm), "request", None
+    else:
+        mm, rain_source, rain_reason = rainfall.annual_rainfall_mm(float(lat_c), float(lon_c))
     c = rainfall.runoff_coefficient(mean_slope, runoff_c)
 
     pond = siting.pond_geometry()
@@ -195,6 +197,7 @@ def _run(ring, rainfall_mm, runoff_c) -> dict:
                 "rainfall_mm": water["rainfall_mm"],
                 "runoff_coefficient": water["runoff_coefficient"],
                 "rainfall_source": rain_source,
+                "rainfall_reason": rain_reason,
             },
         },
         "alternative_sites": alternatives,

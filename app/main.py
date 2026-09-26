@@ -15,6 +15,7 @@ Two ways in, one result shape:
 """
 
 import dataclasses
+from typing import Optional
 from xml.etree import ElementTree as ET
 
 from fastapi import (FastAPI, File, UploadFile, HTTPException, Query,
@@ -93,8 +94,10 @@ async def analyze_contour(
     min_catchment_ha: float = Query(2.0, gt=0),
     target_cells: int = Query(350, ge=100, le=800),
     smooth_sigma: float = Query(1.0, ge=0, le=5),
-    rainfall_mm: float = Query(1200.0, gt=0),
-    runoff_coefficient: float = Query(0.25, gt=0, le=1),
+    rainfall_mm: Optional[float] = Query(
+        None, gt=0, description="Annual rainfall (mm). Omit to look it up for the site."),
+    runoff_coefficient: Optional[float] = Query(
+        None, gt=0, le=1, description="Runoff coefficient. Omit to derive it from slope."),
     pond_depth_m: float = Query(3.0, gt=0),
     include_geometry: bool = Query(True),
 ):

@@ -165,21 +165,53 @@ def stats(mask, dem, flow):
     }
 
 
-def pond_sizing(area_m2, settings):
+def pond_sizing(area_m2, settings, rainfall_mm, mean_slope_pct,
+                rainfall_source="request", rainfall_reason=None):
     """
-    Phase-2 placeholder. Abhi rainfall assumed hai; baad mein
-    Open-Meteo / IMD API se aayega. Interface waisa hi rahega.
+    Water volumes for one site -- the same calculation the area path uses,
+    so both routes report identical figures for identical terrain.
+
+    Annual runoff (Rational method):   V = A x P x C
+        A  catchment area (m2), P  annual rainfall (m), C  runoff coefficient
+    Pond storage (prismoidal formula): V = d/6 x (A_top + 4 A_mid + A_bed)
+        a square pond with 1:z side slopes, so the bed is smaller than the top
+    Refills per year = annual runoff / storage. Above ~3 the pond, not the
+    catchment, limits how much water is captured.
     """
-    rain_m = settings.annual_rainfall_mm / 1000.0
-    runoff_m3 = area_m2 * rain_m * settings.runoff_coefficient
+    from app import rainfall as rain_mod
+    from app.area import siting as area_siting
+
+    c = rain_mod.runoff_coefficient(mean_slope_pct, settings.runoff_coefficient)
+    runoff_m3 = area_m2 * (rainfall_mm / 1000.0) * c
+
     d = settings.pond_depth_m
-    top_area = runoff_m3 / d if d > 0 else 0.0
+    pond = area_siting.pond_geometry(depth_m=d)
+    capacity = pond["capacity_m3"]
+
+    # Surface a pond of this depth would need to hold the whole year's runoff
+    # in one filling (box approximation, kept from phase 1 for comparison).
+    full_top = runoff_m3 / d if d > 0 else 0.0
+
     return {
-        "assumed_rainfall_mm": settings.annual_rainfall_mm,
-        "runoff_coefficient": settings.runoff_coefficient,
+        # expected water volume that can be collected in a year
         "estimated_annual_runoff_m3": round(runoff_m3, 1),
+        "rainfall_mm": round(float(rainfall_mm), 1),
+        "rainfall_source": rainfall_source,
+        "rainfall_reason": rainfall_reason,
+        "runoff_coefficient": c,
+        # the recommended pond and what it stores at once
+        "suggested_side_m": round(float(np.sqrt(pond["top_area_m2"])), 1),
+        "depth_m": pond["depth_m"],
+        "side_slope": pond["side_slope"],
+        "top_area_m2": pond["top_area_m2"],
+        "bed_area_m2": pond["bed_area_m2"],
+        "capacity_m3": capacity,
+        "refills_per_year": round(runoff_m3 / capacity, 2) if capacity > 0 else None,
+        # a pond sized to catch everything in one fill
+        "full_capture_top_area_m2": round(full_top, 1),
+        "full_capture_side_m": round(float(np.sqrt(max(full_top, 0.0))), 1),
+        # phase-1 key names, kept so older clients keep working
+        "assumed_rainfall_mm": round(float(rainfall_mm), 1),
         "recommended_depth_m": d,
-        "required_top_area_m2": round(top_area, 1),
-        "suggested_side_m": round(float(np.sqrt(max(top_area, 0.0))), 1),
-        "note": "rainfall abhi assumed; phase-2 mein API se aayega",
+        "required_top_area_m2": round(full_top, 1),
     }

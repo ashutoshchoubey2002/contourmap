@@ -180,6 +180,20 @@ a.dl{color:var(--water);font-size:13px;display:inline-block;margin-top:12px}
   #body{overflow:visible}
   #stage{height:60vh;flex:none}
 }
+
+/* ---- water volume block ---- */
+.vol{margin-top:14px;border:1px solid var(--rule);background:#fff}
+.vol h3{font-size:12.5px;font-weight:500;color:var(--ink-soft);
+  padding:9px 12px;border-bottom:1px solid var(--rule)}
+.vol .line{display:flex;justify-content:space-between;align-items:baseline;
+  gap:10px;padding:8px 12px;border-bottom:1px solid var(--rule)}
+.vol .line span{font-size:13px;color:var(--ink-soft)}
+.vol .line span small{display:block;font-family:'DM Mono',monospace;font-size:11px;color:#8A928C}
+.vol .line b{font-family:'DM Mono',monospace;font-weight:500;font-size:14px;white-space:nowrap}
+.vol .line.key{background:#EEF4F6}
+.vol .line.key b{color:var(--water)}
+.vol .formula{font-family:'DM Mono',monospace;font-size:11.5px;color:var(--ink-soft);
+  padding:8px 12px;background:var(--panel);line-height:1.6}
 </style>
 </head>
 <body>
@@ -245,13 +259,30 @@ a.dl{color:var(--water);font-size:13px;display:inline-block;margin-top:12px}
       </div>
       <div class="reading">
         <div class="v"><span id="runoff">—</span><small>m³ / year</small></div>
-        <div class="k">Runoff arriving over a year</div>
+        <div class="k">Water reaching the pond each year</div>
       </div>
       <div class="reading">
         <div class="v"><span id="hold">—</span><small>m³ held</small></div>
-        <div class="k">What a pond this size stores at once</div>
+        <div class="k">Water needed to fill the pond once</div>
       </div>
 
+      <div class="vol">
+        <h3>Water volume</h3>
+        <div class="line"><span>Catchment area<small>A</small></span><b id="vA">—</b></div>
+        <div class="line"><span>Annual rainfall<small>P</small></span><b id="vP">—</b></div>
+        <div class="line"><span>Rain falling on the catchment<small>A × P</small></span><b id="vRain">—</b></div>
+        <div class="line"><span>Runoff coefficient<small>C</small></span><b id="vC">—</b></div>
+        <div class="line key"><span>Water reaching the pond each year<small>A × P × C</small></span><b id="vRun">—</b></div>
+        <div class="line"><span>Pond size<small>top side × depth</small></span><b id="vPond">—</b></div>
+        <div class="line key"><span>Water to fill the pond once<small>pond storage volume</small></span><b id="vCap">—</b></div>
+        <div class="line"><span>Times it fills in a year<small>runoff ÷ storage</small></span><b id="vFill">—</b></div>
+        <div class="line"><span>Overflow after one filling<small>runoff − storage</small></span><b id="vOver">—</b></div>
+        <div class="line"><span>Pond to hold a full year<small>same depth</small></span><b id="vFull">—</b></div>
+        <div class="formula">
+          Runoff = A × P × C<br>
+          Storage = d/6 × (A<sub>top</sub> + 4A<sub>mid</sub> + A<sub>bed</sub>)
+        </div>
+      </div>
       <div class="pairs">
         <div><div class="v" id="lat">—</div><div class="k">Latitude</div></div>
         <div><div class="v" id="lon">—</div><div class="k">Longitude</div></div>
@@ -469,7 +500,37 @@ function areaKm2(r){ // shoelace on a local equirectangular projection
   return Math.abs(s)/2;
 }
 
+
+/* Water volume panel — same figures on the map and contour pages. */
+function fillVolume(c, z){
+  const f = n => (n === null || n === undefined || isNaN(n)) ? '—' : Math.round(n).toLocaleString();
+  const A = c.area_ha * 10000;                     // m²
+  const P = z.rainfall_mm / 1000;                  // m
+  const runoff = z.estimated_annual_runoff_m3;
+  const cap = z.capacity_m3;
+  const top = z.top_area_m2 || (z.suggested_side_m * z.suggested_side_m);
+  const fullSide = z.full_capture_side_m || (z.depth_m > 0 ? Math.sqrt(runoff / z.depth_m) : null);
+  const natural = z.natural_storage_m3 || 0;
+
+  $('vA').textContent    = c.area_ha.toLocaleString() + ' ha';
+  $('vP').textContent    = z.rainfall_mm + ' mm';
+  $('vRain').textContent = f(A * P) + ' m³';
+  $('vC').textContent    = z.runoff_coefficient;
+  $('vRun').textContent  = f(runoff) + ' m³';
+  $('vPond').textContent = Math.round(Math.sqrt(top)) + ' m × ' + z.depth_m + ' m';
+  $('vCap').textContent  = f(cap) + ' m³' + (natural > 0 ? ' *' : '');
+  $('vFill').textContent = z.refills_per_year == null ? '—' : z.refills_per_year + '×';
+  $('vOver').textContent = runoff > cap ? f(runoff - cap) + ' m³' : 'none';
+  $('vFull').textContent = fullSide ? Math.round(fullSide) + ' m side' : '—';
+  $('vCap').title = natural > 0
+    ? f(z.excavated_capacity_m3) + ' m³ dug + ' + f(natural) + ' m³ natural hollow' : '';
+}
+
 function hideVeil(){ $('veil').style.display = 'none'; }
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, ch =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch]);
+}
 function fail(msg){ $('err').textContent = msg; $('err').style.display = 'block'; }
 
 /* ------------------------------------------------------------- analyse */
@@ -547,6 +608,8 @@ function draw(d, fromCache){
   }).addTo(map).bindPopup(
     '<b>Recommended site</b><br>' + c.area_ha + ' ha catchment<br>' +
     p.elevation_m + ' m elevation<br>' +
+    Math.round(z.estimated_annual_runoff_m3).toLocaleString() + ' m³ runoff a year<br>' +
+    Math.round(z.capacity_m3).toLocaleString() + ' m³ to fill the pond<br>' +
     z.suggested_side_m + ' m across, ' + z.depth_m + ' m deep'
   ).openPopup());
 
@@ -566,13 +629,17 @@ function draw(d, fromCache){
   $('slope').textContent  = c.mean_slope_pct + '%';
   $('relief').textContent = c.relief_m;
   $('side').textContent   = Math.round(z.suggested_side_m);
+  fillVolume(c, z);
 
   const a = d.source.area;
   $('src').textContent  = a.elevation_source === 'terrarium' ? 'SRTM/NED' : a.elevation_source;
   $('cell').textContent = d.dem.cell_size_m;
   $('grid').textContent = d.dem.grid.join('×');
-  $('rainsrc').textContent = ({era5:'ERA5', cache:'ERA5', request:'entered',
-                               fallback:'default'})[z.rainfall_source] || z.rainfall_source;
+  // Backend may report 'cache:power', 'cache:era5' etc. — label by the underlying source.
+  const rs = String(z.rainfall_source || '').replace(/^cache:/, '');
+  $('rainsrc').textContent = ({era5:'ERA5', power:'NASA POWER', local:'WorldClim',
+                               cache:'cached', request:'entered',
+                               fallback:'default'})[rs] || rs || '—';
   $('tiles').textContent = a.tiles_cached + '/' + a.tiles_total;
   $('secs').textContent  = fromCache ? 'cached' : d.total_sec;
 
@@ -587,7 +654,10 @@ function draw(d, fromCache){
       'pond would capture more.');
   if(z.rainfall_source === 'fallback')
     notes.push('Rainfall records could not be reached, so <b>' + z.rainfall_mm +
-      ' mm</b> was assumed. Enter a local figure for a real estimate.');
+      ' mm</b> was assumed. Enter a local figure for a real estimate.' +
+      (z.rainfall_reason
+        ? '<br><small style="color:var(--ink-soft)">' + escapeHtml(z.rainfall_reason) + '</small>'
+        : ''));
   if(a.tiles_missing)
     notes.push('<b>' + a.tiles_missing + '</b> elevation tiles had no data, so part of ' +
       'this area is outside coverage.');

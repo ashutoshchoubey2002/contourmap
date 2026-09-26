@@ -5,6 +5,7 @@ Phase-2 mein weights ya thresholds badalne ho -- sirf ye file
 badalni hai, algorithm ko haath lagane ki zaroorat nahi.
 """
 
+from typing import Optional
 from dataclasses import dataclass, field, asdict
 
 
@@ -35,9 +36,11 @@ class Settings:
     n_candidates: int = 5
     min_separation_m: float = 400.0
 
-    # --- pond sizing (phase-2 mein rainfall API se aayega) ---
-    annual_rainfall_mm: float = 1200.0
-    runoff_coefficient: float = 0.25
+    # --- pond sizing ---
+    # None means "work it out": rainfall is looked up for the site (see
+    # app/rainfall.py) and the runoff coefficient comes from catchment slope.
+    annual_rainfall_mm: Optional[float] = None
+    runoff_coefficient: Optional[float] = None
     pond_depth_m: float = 3.0
 
     def dict(self):
@@ -97,6 +100,9 @@ RAINFALL_GRID_DEG = 0.25
 RAINFALL_TTL_S = 30 * 86400
 RAINFALL_TIMEOUT_S = 20.0       
 RAINFALL_DEFAULT_MM = 1200.0
+# Optional offline annual-rainfall GeoTIFF (mm/year, e.g. WorldClim bio12 or an
+# IMD mean). Used first when present; skipped silently when absent.
+RAINFALL_RASTER = _os.path.join(_os.path.dirname(__file__), "..", "data", "rain_annual_mm.tif")
 
 # --- admission control and caching ---
 MAX_CONCURRENT_JOBS = 2      # raise to 4 for a multi-person demo
